@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Perpustakaan Ayam Jago</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background-color: #f8f9fa; font-family: 'Segoe UI', sans-serif; }
+        .card-book { transition: transform 0.2s; border: none; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .card-book:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+        .navbar { box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        #loading { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 999; }
+        /* Style tambahan untuk rating */
+        .rating-box { font-size: 0.85rem; min-height: 25px; }
+        .rating-source { font-size: 0.7rem; color: #6c757d; text-decoration: none; display: block; margin-top: 2px;}
+        .rating-source:hover { text-decoration: underline; color: #0d6efd; }
+    </style>
+</head>
+<body>
+
+    <div id="loading" class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="#"><i class="fas fa-book-reader"></i> Ayam Jago Lib</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item"><a class="nav-link active" href="#" onclick="switchTab('books')">Katalog Buku</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#" onclick="switchTab('history')">Riwayat Saya</a></li>
+                </ul>
+                <div class="d-flex align-items-center gap-3">
+                    <span class="text-white small" id="username-display">Halo, User!</span>
+                    <button onclick="logout()" class="btn btn-danger btn-sm px-3">Logout</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        
+        <div id="section-books">
+            <div class="row mb-4 align-items-center">
+                <div class="col-md-6">
+                    <h3 class="fw-bold text-secondary">📚 Daftar Buku Tersedia</h3>
+                </div>
+                <div class="col-md-6">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="search-input" placeholder="Cari judul buku...">
+                        <button class="btn btn-primary" onclick="searchBooks()"><i class="fas fa-search"></i> Cari</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="books-container" class="row g-4">
+                </div>
+
+            <nav class="mt-4">
+                <ul class="pagination justify-content-center">
+                    <li class="page-item"><button class="page-link" onclick="changePage(-1)">Previous</button></li>
+                    <li class="page-item disabled"><span class="page-link" id="current-page">1</span></li>
+                    <li class="page-item"><button class="page-link" onclick="changePage(1)">Next</button></li>
+                </ul>
+            </nav>
+        </div>
+
+        <div id="section-history" class="d-none">
+            <h3 class="fw-bold text-secondary mb-4">📜 Riwayat Peminjaman</h3>
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Judul Buku</th>
+                                    <th>Tgl Pinjam</th>
+                                    <th>Tgl Kembali</th>
+                                    <th>Status</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const API_URL = 'https://arya.theokaitou.my.id/api';
+        const EXTERNAL_API_URL = 'https://thegift.theokaitou.my.id/api/books/search'; // URL API Rating
+        
+        const token = localStorage.getItem('user_token');
+        let currentPage = 1;
+        let currentSearch = "";
+
+        // 1. PROTEKSI HALAMAN
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        // Decode Token
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            document.getElementById('username-display').innerText = `Halo, ${payload.name || payload.username}`;
+        } catch (e) {}
+
+        // 2. LOAD DATA AWAL
+        fetchBooks();
+
+        // --- FUNGSI UTAMA ---
+
+        function switchTab(tab) {
+            if (tab === 'books') {
+                document.getElementById('section-books').classList.remove('d-none');
+                document.getElementById('section-history').classList.add('d-none');
+                fetchBooks();
+            } else {
+                document.getElementById('section-books').classList.add('d-none');
+                document.getElementById('section-history').classList.remove('d-none');
+                fetchHistory();
+            }
+        }
+
+        function handleAuthError(res) {
+            if (res.status === 401 || res.status === 403) {
+                localStorage.removeItem('user_token');
+                window.location.href = 'login.html';
+                return true;
+            }
+            return false;
+        }
+
+        // --- MODIFIKASI: FETCH BOOKS DENGAN EXTERNAL RATING ---
+        async function fetchBooks() {
+            showLoading(true);
+            try {
+                let url = `${API_URL}/books?page=${currentPage}`;
+                if (currentSearch) url += `&search=${currentSearch}`;
+
+                const res = await fetch(url);
+                if (handleAuthError(res)) return;
+
+                const json = await res.json();
+                
+                const container = document.getElementById('books-container');
+                container.innerHTML = '';
+                document.getElementById('current-page').innerText = currentPage;
+
+                if (json.data.length === 0) {
+                    container.innerHTML = '<div class="col-12 text-center text-muted py-5">Buku tidak ditemukan.</div>';
+                }
+
+                json.data.forEach(book => {
+                    const isAvailable = book.stock > 0;
+                    
+                    // ID unik untuk tempat menaruh rating nanti
+                    const ratingElementId = `rating-box-${book.id}`;
+
+                    const btnHtml = isAvailable 
+                        ? `<button class="btn btn-outline-primary w-100" onclick="borrowBook(${book.id})">Pinjam</button>`
+                        : `<button class="btn btn-secondary w-100" disabled>Habis</button>`;
+
+                    const card = `
+                        <div class="col-md-4 col-sm-6">
+                            <div class="card card-book h-100 p-3">
+                                <h5 class="fw-bold text-dark mb-1">${book.title}</h5>
+                                <p class="text-muted small mb-1"><i class="fas fa-pen-nib"></i> ${book.author}</p>
+                                
+                                <div id="${ratingElementId}" class="rating-box mb-3">
+                                    <span class="text-secondary fst-italic small"><i class="fas fa-spinner fa-spin"></i> Cek rating...</span>
+                                </div>
+
+                                <div class="mt-auto">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <span class="badge ${isAvailable ? 'bg-success' : 'bg-danger'} rounded-pill">Stok: ${book.stock}</span>
+                                    </div>
+                                    ${btnHtml}
+                                </div>
+                            </div>
+                        </div>`;
+                    container.innerHTML += card;
+
+                    // Panggil fungsi pencari rating (Jalan di background)
+                    getExternalRating(book.title, ratingElementId);
+                });
+            } catch (err) { console.error(err); }
+            showLoading(false);
+        }
+
+        // --- FUNGSI BARU: AMBIL RATING DARI THEGIFT ---
+        async function getExternalRating(title, elementId) {
+            try {
+                // Encode judul agar spasi jadi %20 dsb
+                const safeTitle = encodeURIComponent(title);
+                const res = await fetch(`${EXTERNAL_API_URL}?title=${safeTitle}`);
+                
+                // Cari elemen HTML target
+                const el = document.getElementById(elementId);
+                if (!el) return; // Kalau user keburu pindah halaman, stop
+
+                if (res.ok) {
+                    const data = await res.json();
+                    
+                    if (data && data.length > 0) {
+                        // Ambil data pertama yang cocok
+                        const extBook = data[0]; 
+                        
+                        el.innerHTML = `
+                            <div class="fw-bold text-warning">
+                                <i class="fas fa-star"></i> ${extBook.average_rating} <span class="text-muted fw-normal small">/ 5.0</span>
+                            </div>
+                            <a href="https://thegift.theokaitou.my.id/" target="_blank" class="rating-source">
+                                from thegift.theokaitou.my.id
+                            </a>
+                        `;
+                    } else {
+                        // Tidak ketemu di API luar
+                        el.innerHTML = `<span class="text-muted small" style="font-size: 0.75rem">- Belum ada review -</span>`;
+                    }
+                } else {
+                     el.innerHTML = `<span class="text-muted small">- Info rating n/a -</span>`;
+                }
+
+            } catch (err) {
+                const el = document.getElementById(elementId);
+                if(el) el.innerHTML = ""; // Kosongkan kalau error jaringan
+            }
+        }
+
+        async function borrowBook(bookId) {
+            if(!confirm("Pinjam buku ini?")) return;
+            showLoading(true);
+            try {
+                const res = await fetch(`${API_URL}/borrow`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ bookId })
+                });
+
+                if (handleAuthError(res)) return;
+
+                const data = await res.json();
+                if (res.ok) {
+                    alert("Berhasil pinjam!");
+                    fetchBooks();
+                } else {
+                    alert(data.message);
+                }
+            } catch(e) { alert("Error"); }
+            showLoading(false);
+        }
+
+        async function fetchHistory() {
+            showLoading(true);
+            try {
+                const res = await fetch(`${API_URL}/borrows`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (handleAuthError(res)) return;
+
+                const json = await res.json();
+                const tbody = document.getElementById('history-body');
+                tbody.innerHTML = '';
+
+                if (json.data.length === 0) tbody.innerHTML = '<tr><td colspan="5" class="text-center py-3">Belum ada riwayat.</td></tr>';
+
+                json.data.forEach(item => {
+                    const isBorrowed = item.status === 'borrowed';
+                    const action = isBorrowed 
+                        ? `<button class="btn btn-warning btn-sm" onclick="returnBook(${item.book_id})">Kembalikan</button>`
+                        : `<span class="badge bg-secondary">Selesai</span>`;
+
+                    const row = `
+                        <tr>
+                            <td>${item.book_title}</td>
+                            <td>${new Date(item.borrow_date).toLocaleDateString()}</td>
+                            <td>${item.return_date ? new Date(item.return_date).toLocaleDateString() : '-'}</td>
+                            <td><span class="badge ${isBorrowed ? 'bg-primary' : 'bg-success'}">${item.status}</span></td>
+                            <td>${action}</td>
+                        </tr>`;
+                    tbody.innerHTML += row;
+                });
+            } catch(e) { console.error(e); }
+            showLoading(false);
+        }
+
+        async function returnBook(bookId) {
+            if(!confirm("Kembalikan buku ini?")) return;
+            showLoading(true);
+            try {
+                const res = await fetch(`${API_URL}/return`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ bookId })
+                });
+
+                if (handleAuthError(res)) return;
+
+                if (res.ok) {
+                    alert("Buku dikembalikan!");
+                    fetchHistory();
+                } else {
+                    alert("Gagal mengembalikan.");
+                }
+            } catch(e) { alert("Error"); }
+            showLoading(false);
+        }
+
+        function searchBooks() {
+            currentSearch = document.getElementById('search-input').value;
+            currentPage = 1;
+            fetchBooks();
+        }
+
+        function changePage(delta) {
+            if (currentPage + delta > 0) {
+                currentPage += delta;
+                fetchBooks();
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('user_token');
+            window.location.href = 'login.html';
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+    </script>
+</body>
+</html>
