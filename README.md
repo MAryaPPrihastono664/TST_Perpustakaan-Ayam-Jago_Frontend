@@ -3,7 +3,7 @@
 
 Aplikasi web manajemen perpustakaan modern yang dibangun menggunakan **Vanilla JavaScript** dan **Bootstrap 5**. Frontend ini berinteraksi dengan REST API backend untuk pengelolaan buku dan peminjaman, serta mengintegrasikan **Microservice External** untuk menampilkan rating/ulasan buku secara real-time.
 
-**Live Demo:** [Masukkan Link Vercel Kamu Disini]
+**Live Demo:** [[https://tst-perpustakaan-ayam-jago-frontend.vercel.app](https://tst-perpustakaan-ayam-jago-frontend.vercel.app)]
 
 ---
 
